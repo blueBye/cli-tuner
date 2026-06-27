@@ -11,7 +11,7 @@ class HelloWorldMain : QuarkusApplication {
     override fun run(vararg args: String?): Int {
         println("Starting Quarkus Command-Line Guitar Tuner...")
 
-        // Setup Audio Format: 44.1kHz, 16-bit, Mono, Signed, Little-Endian (Standard for Windows)
+        // Setup Audio Format: 44.1kHz, 16-bit, Mono, Signed, Little-Endian
         val sampleRate = 44100f
         val format = AudioFormat(sampleRate, 16, 1, true, false)
         val info = DataLine.Info(TargetDataLine::class.java, format)
@@ -30,6 +30,7 @@ class HelloWorldMain : QuarkusApplication {
         val floatBuffer = FloatArray(bufferSize / 2)
 
         println("Listening to microphone... Play a string! (Press Ctrl+C to stop)")
+        println() // Blank line for cleaner UI separation
 
         while (true) {
             val bytesRead = line.read(buffer, 0, buffer.size)
@@ -46,7 +47,7 @@ class HelloWorldMain : QuarkusApplication {
                 if (frequency > 50f && frequency < 400f) {
                     val tuningStatus = getClosestGuitarString(frequency)
                     // Use \r to overwrite the same line in the Windows console
-                    print("\rDetected Pitch: %6.2f Hz | %s".format(frequency, tuningStatus))
+                    print("\r$tuningStatus")
                 }
             }
         }
@@ -98,7 +99,9 @@ class HelloWorldMain : QuarkusApplication {
         }
 
         val diff = frequency - targetFrequency
-        val padding = " ".repeat(20) // to clear trailing console characters
+        val inTune = abs(diff) <= 1.5f // Anything within 1.5 Hz is considered "in tune"
+
+        val visualizer = createVisualizer(diff, inTune)
 
         val advice = when {
             diff < -1.5f -> "Tune UP   (->)"
@@ -106,6 +109,38 @@ class HelloWorldMain : QuarkusApplication {
             else         -> "IN TUNE   (==)"
         }
 
-        return "Closest: %-9s | Target: %6.2f Hz | %s%s".format(closestName, targetFrequency, advice, padding)
+        val padding = " ".repeat(10) // clears trailing console characters
+
+        return "Pitch: %6.2f Hz | %-9s | Target: %6.2f Hz | %s %s%s".format(
+            frequency, closestName, targetFrequency, visualizer, advice, padding
+        )
+    }
+
+    private fun createVisualizer(diff: Float, inTune: Boolean): String {
+        val maxVisualDiff = 5.0f // We visualize differences up to 5 Hz in either direction
+        val halfWidth = 12       // Size of the scale on one side
+
+        // Map the hz difference to our visual scale position
+        val position = ((diff / maxVisualDiff) * halfWidth).toInt().coerceIn(-halfWidth, halfWidth)
+
+        val builder = StringBuilder()
+        builder.append("[")
+
+        for (i in -halfWidth..halfWidth) {
+            when {
+                i == position -> {
+                    // Output the marker using ANSI color codes
+                    val markerColor = if (inTune) "\u001B[32m" else "\u001B[31m" // Green or Red
+                    val resetColor = "\u001B[0m"
+                    builder.append("${markerColor}O${resetColor}")
+                }
+                i == 0 -> builder.append("|") // Center target tick
+                i == -halfWidth || i == halfWidth -> builder.append(":") // Edges of the sweet spot
+                else -> builder.append("-")
+            }
+        }
+
+        builder.append("]")
+        return builder.toString()
     }
 }
