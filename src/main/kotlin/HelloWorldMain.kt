@@ -10,7 +10,11 @@ import kotlin.math.sqrt
 @QuarkusMain
 class HelloWorldMain : QuarkusApplication {
     override fun run(vararg args: String?): Int {
-        println("Starting Quarkus Command-Line Guitar Tuner...")
+        val ansiCyan = "\u001B[36m"
+        val ansiReset = "\u001B[0m"
+        val ansiBold = "\u001B[1m"
+
+        println("$ansiCyan$ansiBold=== Modern CLI Guitar Tuner ===$ansiReset")
 
         // Setup Audio Format: 44.1kHz, 16-bit, Mono, Signed, Little-Endian
         val sampleRate = 44100f
@@ -18,7 +22,7 @@ class HelloWorldMain : QuarkusApplication {
         val info = DataLine.Info(TargetDataLine::class.java, format)
 
         if (!AudioSystem.isLineSupported(info)) {
-            println("Error: Microphone is not supported or not found on this system.")
+            println("\u001B[31mError: Microphone is not supported or not found on this system.\u001B[0m")
             return 1
         }
 
@@ -30,7 +34,7 @@ class HelloWorldMain : QuarkusApplication {
         val buffer = ByteArray(bufferSize)
         val floatBuffer = FloatArray(bufferSize / 2)
 
-        println("Listening to microphone... Play a string! (Press Ctrl+C to stop)")
+        println("\u001B[90mListening to microphone... Play a string! (Press Ctrl+C to stop)\u001B[0m")
         println() // Blank line for cleaner UI separation
 
         val noiseThreshold = 0.001f
@@ -64,8 +68,8 @@ class HelloWorldMain : QuarkusApplication {
                 // Filter out noise and irrelevant frequencies
                 if (frequency > 50f && frequency < 400f) {
                     val tuningStatus = getClosestGuitarString(frequency)
-                    // Use \r to overwrite the same line in the Windows console
-                    print("\r$tuningStatus")
+                    // Use \u001B[2K to clear the current line, then \r to overwrite
+                    print("\u001B[2K\r$tuningStatus")
                 }
             }
         }
@@ -121,44 +125,50 @@ class HelloWorldMain : QuarkusApplication {
 
         val visualizer = createVisualizer(diff, inTune)
 
+        val reset = "\u001B[0m"
+        val adviceColor = if (inTune) "\u001B[1;32m" else if (abs(diff) <= 5.0f) "\u001B[1;33m" else "\u001B[1;31m"
+
         val advice = when {
-            diff < -1.5f -> "Tune UP   (->)"
-            diff > 1.5f  -> "Tune DOWN (<-)"
-            else         -> "IN TUNE   (==)"
+            diff < -1.5f -> "$adviceColor TUNE UP   »$reset"
+            diff > 1.5f  -> "$adviceColor« TUNE DOWN  $reset"
+            else         -> "$adviceColor ✓ PERFECT    $reset"
         }
 
-        val padding = " ".repeat(10) // clears trailing console characters
-
-        return "Pitch: %6.2f Hz | %-9s | Target: %6.2f Hz | %s %s%s".format(
-            frequency, closestName, targetFrequency, visualizer, advice, padding
+        // We do the basic string formatting first to prevent ANSI codes from breaking the layout width
+        val textInfo = "Pitch: %6.2f Hz  │  Note: %-9s │  Target: %6.2f Hz".format(
+            frequency, closestName, targetFrequency
         )
+
+        return "$textInfo  │  $visualizer  │  $advice"
     }
 
     private fun createVisualizer(diff: Float, inTune: Boolean): String {
         val maxVisualDiff = 5.0f // We visualize differences up to 5 Hz in either direction
-        val halfWidth = 12       // Size of the scale on one side
+        val halfWidth = 15       // Wider for a more modern, smooth gauge
 
         // Map the hz difference to our visual scale position
         val position = ((diff / maxVisualDiff) * halfWidth).toInt().coerceIn(-halfWidth, halfWidth)
 
         val builder = StringBuilder()
-        builder.append("[")
+        val reset = "\u001B[0m"
+        val dim = "\u001B[90m"
+        val brightWhite = "\u001B[1;37m"
+
+        builder.append("$dim[$reset ")
 
         for (i in -halfWidth..halfWidth) {
             when {
                 i == position -> {
-                    // Output the marker using ANSI color codes
-                    val markerColor = if (inTune) "\u001B[32m" else "\u001B[31m" // Green or Red
-                    val resetColor = "\u001B[0m"
-                    builder.append("${markerColor}O${resetColor}")
+                    // Marker changes color based on proximity to center
+                    val markerColor = if (inTune) "\u001B[1;32m" else if (abs(i) <= halfWidth / 2) "\u001B[1;33m" else "\u001B[1;31m"
+                    builder.append("${markerColor}┼${reset}")
                 }
-                i == 0 -> builder.append("|") // Center target tick
-                i == -halfWidth || i == halfWidth -> builder.append(":") // Edges of the sweet spot
-                else -> builder.append("-")
+                i == 0 -> builder.append("${brightWhite}┼${reset}") // Center target tick
+                else -> builder.append("${dim}─${reset}")
             }
         }
 
-        builder.append("]")
+        builder.append(" $dim]$reset")
         return builder.toString()
     }
 }
