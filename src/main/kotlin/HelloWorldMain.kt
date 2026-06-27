@@ -5,6 +5,7 @@ import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 @QuarkusMain
 class HelloWorldMain : QuarkusApplication {
@@ -32,13 +33,30 @@ class HelloWorldMain : QuarkusApplication {
         println("Listening to microphone... Play a string! (Press Ctrl+C to stop)")
         println() // Blank line for cleaner UI separation
 
+        val noiseThreshold = 0.001f
+
+        // Print this once before the loop starts
+        print("Waiting for a string pluck...\r")
+
         while (true) {
             val bytesRead = line.read(buffer, 0, buffer.size)
             if (bytesRead > 0) {
+                var sumSquares = 0.0f
+
                 // Convert 16-bit PCM bytes to normalized floats (-1.0 to 1.0)
                 for (i in 0 until bytesRead / 2) {
                     val sample = (buffer[2 * i].toInt() and 0xFF) or (buffer[2 * i + 1].toInt() shl 8)
-                    floatBuffer[i] = sample.toFloat() / 32768.0f
+                    val floatSample = sample.toFloat() / 32768.0f
+                    floatBuffer[i] = floatSample
+                    sumSquares += floatSample * floatSample
+                }
+
+                // Calculate RMS (Root Mean Square) to measure the volume of this buffer
+                val rms = sqrt(sumSquares / (bytesRead / 2))
+
+                // If the audio is too quiet, skip pitch detection but DO NOT erase the screen
+                if (rms < noiseThreshold) {
+                    continue
                 }
 
                 val frequency = estimatePitch(floatBuffer, sampleRate)
